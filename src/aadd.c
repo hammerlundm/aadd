@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
     while (!done) {
         status = mpd_run_status(conn);
         new_id = mpd_status_get_song_id(status);
-        if (new_id != song_id) {
+        if (new_id > 0 && new_id != song_id) {
             song_id = new_id;
             song = mpd_run_current_song(conn);
             strncpy(album,  mpd_song_get_tag(song, MPD_TAG_ALBUM,  0), BUFSIZE);
