@@ -9,17 +9,8 @@
 
 #define BUFSIZE 255
 
-int signaled;
-int done;
 pid_t feh;
-
-void on_click(int sig) {
-    signaled = 1;
-}
-
-void on_quit(int sig) {
-    done = 1;
-}
+char album[BUFSIZE], artist[BUFSIZE];
 
 pid_t window() {
     pid_t p = fork();
@@ -31,7 +22,10 @@ pid_t window() {
     return 0;
 }
 
-pid_t display(char *album, char *artist) {
+pid_t display() {
+    if (artist[0] == '\0' || album[0] == '\0') {
+        return 0;
+    }
     pid_t p = fork();
     if (p != 0) {
         return p;
@@ -50,6 +44,31 @@ pid_t display(char *album, char *artist) {
     return 0;
 }
 
+void on_click(int sig) {
+    if (feh) {
+        if (waitpid(feh, NULL, WNOHANG) == 0) {
+            kill(feh, SIGTERM);
+            waitpid(feh, NULL, 0);
+            feh = 0;
+        }
+        else {
+            waitpid(feh, NULL, 0);
+            feh = display();
+        }
+    }
+    else {
+        feh = display();
+    }
+}
+
+void on_quit(int sig) {
+    if (feh) {
+        kill(feh, SIGTERM);
+        waitpid(feh, NULL, 0);
+    }
+    exit(0);
+}
+
 int main(int argc, char *argv[]) {
     struct sigaction click, quit;
     click.sa_handler = on_click;
@@ -63,49 +82,35 @@ int main(int argc, char *argv[]) {
     struct mpd_connection *conn = mpd_connection_new(NULL, 0, 0);
     struct mpd_status *status;
     struct mpd_song *song;
-    char album[BUFSIZE], artist[BUFSIZE];
     int song_id = 0, new_id;
-    feh = 0;
-    while (!done) {
-        status = mpd_run_status(conn);
-        new_id = mpd_status_get_song_id(status);
-        if (new_id > 0 && new_id != song_id) {
-            song_id = new_id;
-            song = mpd_run_current_song(conn);
-            strncpy(album,  mpd_song_get_tag(song, MPD_TAG_ALBUM,  0), BUFSIZE);
-            strncpy(artist, mpd_song_get_tag(song, MPD_TAG_ARTIST, 0), BUFSIZE);
-            mpd_song_free(song);
-            if (feh) {
-                if (waitpid(feh, NULL, WNOHANG) == 0) {
-                    kill(feh, SIGTERM);
-                    waitpid(feh, NULL, 0);
-                    feh = display(album, artist);
+    song = mpd_run_current_song(conn);
+    if (song) {
+        strncpy(album,  mpd_song_get_tag(song, MPD_TAG_ALBUM,  0), BUFSIZE);
+        strncpy(artist, mpd_song_get_tag(song, MPD_TAG_ARTIST, 0), BUFSIZE);
+        mpd_song_free(song);
+    }
+    while (1) {
+        enum mpd_idle idle = mpd_run_idle(conn);
+        if (idle == MPD_IDLE_PLAYER) {
+            status = mpd_run_status(conn);
+            new_id = mpd_status_get_song_id(status);
+            if (new_id > 0 && new_id != song_id) {
+                song_id = new_id;
+                song = mpd_run_current_song(conn);
+                strncpy(album,  mpd_song_get_tag(song, MPD_TAG_ALBUM,  0), BUFSIZE);
+                strncpy(artist, mpd_song_get_tag(song, MPD_TAG_ARTIST, 0), BUFSIZE);
+                mpd_song_free(song);
+                if (feh) {
+                    if (waitpid(feh, NULL, WNOHANG) == 0) {
+                        kill(feh, SIGTERM);
+                        waitpid(feh, NULL, 0);
+                        feh = display(artist, album);
+                    }
                 }
             }
-        }
-        mpd_status_free(status);
-        if (signaled) {
-            if (feh) {
-                if (waitpid(feh, NULL, WNOHANG) == 0) {
-                    kill(feh, SIGTERM);
-                    waitpid(feh, NULL, 0);
-                    feh = 0;
-                }
-                else {
-                    waitpid(feh, NULL, 0);
-                    feh = display(album, artist);
-                }
-            }
-            else {
-                feh = display(album, artist);
-            }
-            signaled = 0;
+            mpd_status_free(status);
         }
     }
-    if (feh) {
-        kill(feh, SIGTERM);
-        waitpid(feh, NULL, 0);
-    }
-    mpd_connection_free(conn);
+    return 0;
 }
 
