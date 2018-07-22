@@ -1,14 +1,8 @@
 # Album Art Display Daemon
 ## Description
 AADD is a daemon to display the album art of the currently playing song in [mpd](https://www.musicpd.org/).
-It makes the following assumptions:
-
-* The album artist and album tags of all songs are set
-* The directory ~/Music/artist/album/ exists
-    * The cover art is located in the directory
-    * The cover art is the only image file in the directory
-* The dimensions of the screen are 3200x1800
-* All cover art is at least 600x600
+It assumes that the album art is located in an image in the same directory as the song.
+The image is displayed in the upper-left corner of the screen, with a 30 pixel vertical offset (for the status bar).
 
 Currently, AADD only supports [BSPWM](https://github.com/baskerville/bspwm) as a window manager.
 

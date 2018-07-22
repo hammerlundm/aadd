@@ -7,23 +7,23 @@
 #include <mpd/status.h>
 #include <mpd/player.h>
 
-#define BUFSIZE 255
+#define BUFSIZE 1023
 
 pid_t feh;
-char album[BUFSIZE], artist[BUFSIZE];
+char path[BUFSIZE];
 
 pid_t window() {
     pid_t p = fork();
     if (p != 0) {
         return p;
     }
-    char *argv[] = {"bspc", "rule", "-a", "feh", "state=floating", "sticky=on", "focus=off", "rectangle=600x600+2600+30", "-o", NULL};
+    char *argv[] = {"bspc", "rule", "-a", "feh", "state=floating", "sticky=on", "focus=off", "-o", NULL};
     execvp("bspc", argv);
     return 0;
 }
 
 pid_t display() {
-    if (artist[0] == '\0' || album[0] == '\0') {
+    if (path[0] == '\0') {
         return 0;
     }
     pid_t p = fork();
@@ -31,14 +31,12 @@ pid_t display() {
         return p;
     }
     pid_t b = window();
-    char path[BUFSIZE] = {};
-    strncat(path, getenv("HOME"), BUFSIZE - strlen(path) - 1);
-    strncat(path, "/",            BUFSIZE - strlen(path) - 1);
-    strncat(path, "Music/",       BUFSIZE - strlen(path) - 1);
-    strncat(path, artist,         BUFSIZE - strlen(path) - 1);
-    strncat(path, "/",            BUFSIZE - strlen(path) - 1);
-    strncat(path, album,          BUFSIZE - strlen(path) - 1);
-    char *argv[] = {"feh", "-q", path, "-g", "600x600", NULL};
+    char dir[BUFSIZE] = {};
+    strncat(dir, getenv("HOME"), BUFSIZE - strlen(dir) - 1);
+    strncat(dir, "/",            BUFSIZE - strlen(dir) - 1);
+    strncat(dir, "Music/",       BUFSIZE - strlen(dir) - 1);
+    strncat(dir, path,           BUFSIZE - strlen(dir) - 1);
+    char *argv[] = {"feh", "-q", "-g", "-0+30", dir, NULL};
     waitpid(b, NULL, 0);
     execvp("feh", argv);
     return 0;
@@ -69,6 +67,18 @@ void on_quit(int sig) {
     exit(0);
 }
 
+int strlen_to_token(const char *uri, char token) {
+    int idx = 0;
+    int len = 0;
+    while (uri[idx] != '\0') {
+        if (uri[idx] == token) {
+            len = idx;
+        }
+        idx++;
+    }
+    return len;
+}
+
 int main(int argc, char *argv[]) {
     struct sigaction click, quit;
     click.sa_handler = on_click;
@@ -85,8 +95,9 @@ int main(int argc, char *argv[]) {
     int song_id = 0, new_id;
     song = mpd_run_current_song(conn);
     if (song) {
-        strncpy(album,  mpd_song_get_tag(song, MPD_TAG_ALBUM,  0), BUFSIZE);
-        strncpy(artist, mpd_song_get_tag(song, MPD_TAG_ARTIST, 0), BUFSIZE);
+        const char *uri = mpd_song_get_uri(song);
+        memset(path, 0, BUFSIZE);
+        strncpy(path, uri, strlen_to_token(uri, '/'));
         mpd_song_free(song);
     }
     while (1) {
@@ -97,14 +108,15 @@ int main(int argc, char *argv[]) {
             if (new_id > 0 && new_id != song_id) {
                 song_id = new_id;
                 song = mpd_run_current_song(conn);
-                strncpy(album,  mpd_song_get_tag(song, MPD_TAG_ALBUM,  0), BUFSIZE);
-                strncpy(artist, mpd_song_get_tag(song, MPD_TAG_ARTIST, 0), BUFSIZE);
+                const char *uri = mpd_song_get_uri(song);
+                memset(path, 0, BUFSIZE);
+                strncpy(path, uri, strlen_to_token(uri, '/'));
                 mpd_song_free(song);
                 if (feh) {
                     if (waitpid(feh, NULL, WNOHANG) == 0) {
                         kill(feh, SIGTERM);
                         waitpid(feh, NULL, 0);
-                        feh = display(artist, album);
+                        feh = display();
                     }
                 }
             }
